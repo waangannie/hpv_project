@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.DS_Store
+git add hpv_sim.py
+git add .gitignore
+git commit -m "Initial commit: hpv simulation"
+gh repo create hpv_project --public --source=. --push
