@@ -33,3 +33,19 @@ def custom_vx(sim): #sim.t is the current time step index, and sim.yearvec is th
     if sim.yearvec[sim.t] == 2000: 
         target_group = (sim.people.age>9) * (sim.people.age<14) #multiplying them together acts like an AND 
         sim.people.peak_imm[0, target_group] = 1 #0 refers to the first disease/pathogen in the simulation. Setting it to 1 for everyone in target_group means those agents instantly get 100% peak immunity
+
+pars = dict(
+    location = 'tanzania', # Use population characteristics for Japan
+    n_agents = 10e3, # Have 50,000 people total in the population
+    start = 1980, # Start the simulation in 1980
+    n_years = 50, # Run the simulation for 50 years
+    burnin = 10, # Discard the first 20 years as burnin period
+    verbose = 0, # Do not print any output
+)
+
+# Running with multisims
+s1 = hpv.Sim(pars, label='Default') #baseline/control - no interventions
+s2 = hpv.Sim(pars, interventions=custom_vx, label='Custom vaccination')
+msim = hpv.MultiSim([s1, s2])
+msim.run()
+fig = msim.plot(['cancers', 'cins'])
