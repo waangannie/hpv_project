@@ -213,3 +213,218 @@ sim = hpv.Sim(pars, interventions = [screen, triage, assign_tx, ablation, excisi
 # Run and plot
 msim = hpv.parallel(orig_sim, sim)
 msim.plot();
+
+
+# making a custom product - Define a new treatment called new_tx that works on all HPV genotypes, with increasing effectiveness as the disease gets more severe — then package it into an HPVsim intervention object ready to use in a simulation
+import hpvsim as hpv
+import pandas as pd #pandas library for creating and managing data tables
+my_treatment_data = pd.DataFrame({'name':'new_tx', 'state':['precin','cin1','cin2','cin3','cancerous'],'genotype':'all','efficacy':[.2,.3,.3,.4,.4]}) #creates spreadsheet like structure 
+my_treatment = hpv.tx(df=my_treatment_data) #passes dataframe into hpvsim tx
+
+
+#Prophylactic vaccination - targets a vaccine product towards a subset of the population
+vx = hpv.routine_vx(prob=prob, start_year=2015, age_range=[9,10], product='bivalent')
+
+# Create the sim with and without interventions
+orig_sim = hpv.Sim(pars, label='Baseline')
+sim = hpv.Sim(pars, interventions = vx, label='With vaccination')
+
+# Run and plot
+msim = hpv.parallel(orig_sim, sim)
+msim.plot();
+
+
+# therapeutic vaccination
+import numpy as np #library for numerical computing
+import hpvsim as hpv
+
+# Define mass therapeutic vaccination:
+campaign_txvx_dose1 = hpv.campaign_txvx(prob = 0.9, years = 2015, age_range = [30,50], product = 'txvx1', label = 'campaign txvx')
+second_dose_eligible = lambda sim: (sim.people.txvx_doses == 1) | (sim.t > (sim.people.date_tx_vaccinated + 0.5 / sim['dt']))
+campaign_txvx_dose2 = hpv.campaign_txvx(prob = 0.7, years=[2015,2016], age_range=[30, 70], product = 'txvx2', eligibility = second_dose_eligible, label = 'campaign txvx 2nd dose')
+routine_txvx_dose1 = hpv.routine_txvx(prob = 0.9, start_year = 2016, age_range = [30,31], product = 'txvx2',label = 'routine txvx')
+second_dose_eligible = lambda sim: (sim.people.txvx_doses == 1) | (sim.t > (sim.people.date_tx_vaccinated + 0.5 / sim['dt']))
+routine_txvx_dose2 = hpv.routine_txvx(prob = 0.8, start_year = 2016, age_range = [30,31], product = 'txvx1', eligibility=second_dose_eligible, label = 'routine txvx 2nd dose')
+mass_vx_intvs = [campaign_txvx_dose1, campaign_txvx_dose2, routine_txvx_dose1, routine_txvx_dose2]
+for intv in mass_vx_intvs: intv.do_plot=False
+
+# Define therapeutic vaccination within screen and treat
+campaign_txvx_dose1 = hpv.campaign_txvx(prob = 0.9, years = 2015, age_range = [30,50], product = 'txvx1', label = 'campaign txvx')
+second_dose_eligible = lambda sim: (sim.people.txvx_doses == 1) | (sim.t > (sim.people.date_tx_vaccinated + 0.5 / sim['dt']))
+campaign_txvx_dose2 = hpv.campaign_txvx(prob = 0.7, years=[2015,2016], age_range=[30, 70], product = 'txvx2', eligibility = second_dose_eligible, label = 'campaign txvx 2nd dose')
+routine_txvx_dose1 = hpv.routine_txvx(prob = 0.9, start_year = 2016, age_range = [30,31], product = 'txvx2',label = 'routine txvx')
+second_dose_eligible = lambda sim: (sim.people.txvx_doses == 1) | (sim.t > (sim.people.date_tx_vaccinated + 0.5 / sim['dt']))
+routine_txvx_dose2 = hpv.routine_txvx(prob = 0.8, start_year = 2016, age_range = [30,31], product = 'txvx1', eligibility=second_dose_eligible, label = 'routine txvx 2nd dose')
+mass_vx_intvs = [campaign_txvx_dose1, campaign_txvx_dose2, routine_txvx_dose1, routine_txvx_dose2]
+for intv in mass_vx_intvs: intv.do_plot=False
+
+
+# Screen, triage, assign treatment, treat
+screen_eligible = lambda sim: np.isnan(sim.people.date_screened) | (sim.t > (sim.people.date_screened + 5 / sim['dt']))
+routine_screen = hpv.routine_screening(start_year=2016, product='hpv', prob=0.1, eligibility=screen_eligible, age_range=[30, 50], label='routine screening')
+screened_pos = lambda sim: sim.get_intervention('routine screening').outcomes['positive'] # Get those who screen positive
+pos_screen_assesser = hpv.routine_triage(start_year=2016, product = 'txvx_assigner', prob = 1.0, annual_prob=False, eligibility = screened_pos, label = 'txvx assigner') # Offer TxVx or refer them for further testing
+txvx_eligible = lambda sim: sim.get_intervention('txvx assigner').outcomes['txvx'] # Get people who've been classified as txvx eligible based on the positive screen assessment
+deliver_txvx = hpv.linked_txvx(prob = 0.8, product = 'txvx1', eligibility = txvx_eligible, label = 'txvx') # Deliver txvx to them
+
+screen_vx_intv = [routine_screen, pos_screen_assesser, deliver_txvx]
+for intv in screen_vx_intv: intv.do_plot=False
+
+sim0 = hpv.Sim(pars=pars, label='Baseline')
+sim1 = hpv.Sim(pars=pars, interventions=mass_vx_intvs, label='Mass therapeutic vaccination')
+sim2 = hpv.Sim(pars=pars, interventions=screen_vx_intv, label='Therapeutic vaccination through screening')
+
+# Run and plot
+msim = hpv.parallel(sim0, sim1, sim2)
+msim.plot();
+
+
+#analyzers - objects that do not change the behavior of a simulation, but just report on its internal state
+#results by age
+import numpy as np
+import sciris as sc #acts as a "library of the gaps"
+import hpvsim as hpv
+
+# Create some parameters, setting beta (per-contact transmission probability) higher
+# to create more cancers for illutration
+pars = dict(beta=0.5, n_agents=50e3, start=1970, n_years=50, dt=1., location='tanzania')
+
+# Also set initial HPV prevalence to be high, again to generate more cancers
+pars['init_hpv_prev'] = {
+    'age_brackets'  : np.array([  12,   17,   24,   34,  44,   64,    80, 150]),
+    'm'             : np.array([ 0.0, 0.75, 0.9, 0.45, 0.1, 0.05, 0.005, 0]),
+    'f'             : np.array([ 0.0, 0.75, 0.9, 0.45, 0.1, 0.05, 0.005, 0]),
+}
+
+# Create the age analyzers.
+az1 = hpv.age_results(
+    result_args=sc.objdict(
+        hpv_prevalence=sc.objdict( # The keys of this dictionary are any results you want by age, and can be any key of sim.results
+            years=2019, # List the years that you want to generate results for
+            edges=np.array([0., 15., 20., 25., 30., 40., 45., 50., 55., 65., 100.]),
+        ),
+        hpv_incidence=sc.objdict(
+            years=2019,
+            edges=np.array([0., 15., 20., 25., 30., 40., 45., 50., 55., 65., 100.]),
+        ),
+        cancer_incidence=sc.objdict(
+            years=2019,
+            edges=np.array([0.,20.,25.,30.,40.,45.,50.,55.,65.,100.]),
+        ),
+        cancer_mortality=sc.objdict(
+            years=2019,
+            edges=np.array([0., 20., 25., 30., 40., 45., 50., 55., 65., 100.]),
+        )
+    )
+)
+
+sim = hpv.Sim(pars, genotypes=[16, 18], analyzers=[az1])
+sim.run()
+a = sim.get_analyzer()
+a.plot();
+#also possible to plot these results alongside data
+az2 = hpv.age_results(
+    result_args=sc.objdict(
+        cancers=sc.objdict(
+            datafile='example_cancer_cases.csv',
+        ),
+    )
+)
+sim = hpv.Sim(pars, genotypes=[16, 18], analyzers=[az2])
+sim.run()
+a = sim.get_analyzer()
+a.plot();
+
+
+#snapshots - take “pictures” of the sim.people object at specified points in time
+snap = hpv.snapshot(timepoints=['2020'])
+sim = hpv.Sim(pars, analyzers=snap)
+sim.run()
+
+a = sim.get_analyzer()
+people = a.snapshots[0]
+
+# Plot age mixing
+import pylab as pl
+import matplotlib as mpl
+fig, ax = pl.subplots(nrows=1, ncols=1, figsize=(5, 4))
+
+fc = people.contacts['m']['age_f'] # Get the age of female contacts in marital partnership
+mc = people.contacts['m']['age_m'] # Get the age of male contacts in marital partnership
+h = ax.hist2d(fc, mc, bins=np.linspace(0, 75, 16), density=True, norm=mpl.colors.LogNorm())
+ax.set_xlabel('Age of female partner')
+ax.set_ylabel('Age of male partner')
+fig.colorbar(h[3], ax=ax)
+ax.set_title('Marital age mixing')
+pl.show();
+
+
+#age pyramids (like snapshots but in pyramid figures)
+# Create some parameters
+pars = dict(n_agents=50e3, start=2000, n_years=30, dt=0.5)
+
+# Make the age pyramid analyzer
+age_pyr = hpv.age_pyramid(
+    timepoints=['2010', '2020'],
+    datafile='south_africa_age_pyramid.csv',
+    edges=np.linspace(0, 100, 21))
+
+# Make the sim, run, get the analyzer, and plot
+sim = hpv.Sim(pars, location='south africa', analyzers=age_pyr)
+sim.run()
+a = sim.get_analyzer()
+fig = a.plot(percentages=True);
+
+
+#calibration runs your simulation hundreds of times, each time trying different parameter values, and scores each run on how closely it matches your real-world data
+#calibration object contains:
+    #- an hpv.Sim() instance with details of the model configuration
+    #- two lists of parameters to vary, one for parameters that vary by genotype and one for those that don’t
+    #- dataframes that hold the calibration targets, which are typically added as csv files
+    #- a list of any additional results to plot
+    #- settings that are passed to the Optuna package (an open source hyperparameter optimization framework that automates calibration for HPVsim)
+import hpvsim as hpv
+
+# Configure a simulation with some parameters
+pars = dict(n_agents=10e3, start=1980, end=2020, dt=0.25, location='nigeria')
+sim = hpv.Sim(pars)
+
+# Specify some parameters to adjust during calibration.
+# The parameters in the calib_pars dictionary don't vary by genotype,
+# whereas those in the genotype_pars dictionary do. Both kinds are
+# given in the order [best, lower_bound, upper_bound].
+calib_pars = dict(
+        beta=[0.05, 0.010, 0.20],
+    )
+
+genotype_pars = dict(
+    hpv16=dict(
+        cin_fn=dict(k=[0.5, 0.2, 1.0]),
+        dur_cin=dict(par1=[6, 4, 12])
+    ),
+    hpv18=dict(
+        cin_fn=dict(k=[0.5, 0.2, 1.0]),
+        dur_cin=dict(par1=[6, 4, 12])
+    )
+)
+
+# List the datafiles that contain data that we wish to compare the model to:
+datafiles=['nigeria_cancer_cases.csv',
+           'nigeria_cancer_types.csv']
+
+# List extra results that we don't have data on, but wish to include in the
+# calibration object so we can plot them.
+results_to_plot = ['cancer_incidence', 'asr_cancer_incidence']
+
+# Create the calibration object, run it, and plot the results
+calib = hpv.Calibration(
+    sim,
+    calib_pars=calib_pars,
+    genotype_pars=genotype_pars,
+    extra_sim_result_keys=results_to_plot,
+    datafiles=datafiles,
+    total_trials=3, n_workers=1
+)
+calib.calibrate(die=True)
+calib.plot(res_to_plot=4);
+
